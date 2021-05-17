@@ -1,0 +1,122 @@
+import sys
+import datetime
+import sqlite3
+from sqlite3 import Error
+import pandas as pd
+
+programa = True
+while programa:
+    print("VENTA DE COSMETICOS EN LINEA")
+    print("")
+    print("Agradecemos su visita")
+    print("A continuacion los dejamos con nuestro menu navegable")
+    #Creacion de la tabla donde se trabajara
+    try:
+        with sqlite3.connect("Cosmeteria_linea.db", detect_types = sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as conexion:
+            c = conexion.cursor()
+            c.execute("CREATE TABLE IF NOT EXISTS Ventas_cosmeteria (Folio INTEGER PRIMARY KEY AUTOINCREMENT, Nombre TEXT NOT NULL);")
+            c.execute("CREATE TABLE IF NOT EXISTS Detalles_Ventas (IDdetalle INTEGER PRIMARY KEY,Folio KEY ,Fecha timestamp NOT NULL, Producto TEXT NOT NULL, Cantidad INTEGER NOT NULL, Precio INTEGER NOT NULL,FOREIGN KEY(Folio) REFERENCES ventas_cosmeteria(Folio));")
+        
+    except Error as x:
+        print (x)
+    except:
+        print(f"Se produjo el siguiente error: {sys.exc_info()[0]}")
+    finally:
+        conexion.close()
+
+
+    #Conexion con la tabla creada anteriormente
+
+    try:
+        with sqlite3.connect("Cosmeteria_linea.db", detect_types = sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES) as conexion:
+            c = conexion.cursor()
+            fecha=datetime.datetime.combine(datetime.date.today(), datetime.datetime.min.time())
+            #Insertado de datos en los campos de las tablas creados
+            registros_detalle={"Fecha":fecha,"Producto":None,"Cantidad":None,"Precio":None,"Folio":None}
+            registro_venta={"Nombre":None}
+            while (True):
+                respuesta = 1
+                print("""MENU
+                1.- Registrar Ventas 
+                2.- Consultar Ventas En Fecha Especifico
+                3.- Salir""")
+                decision_usuario = int(input("¿Qué accion deseas realizar: "))
+                if decision_usuario == 1:
+                    nombre = input("Ingrese quien realiza la compra [Empresa/Institucion/Persona]: ")
+                    registro_venta["Nombre"]=nombre
+                    c.execute("INSERT INTO Ventas_cosmeteria (Nombre) VALUES(:Nombre)", registro_venta)
+                    conexion.commit()
+                    c.execute("SELECT MAX(FOLIO) FROM Ventas_cosmeteria")
+                    folio = c.fetchall()[0][0]
+                    registros_detalle["Folio"] = folio
+                    while respuesta == 1:
+                        print("""Le presentamos nuestro catalogo:
+                        Articulo                            Precio
+                        1.-Cremas                           250
+                        2.-Labiales                         150
+                        3.-Exfoliantes                      300
+                    
+                        4.-En caso que desee algun otro producto, Ingrese el nombre del producto,
+                        el precio estimado y nosotros se lo haremos notificar""")
+
+                        producto = input("Ingrese el nombre del articulo que desea comprar: ")
+                        while True:
+                            try:
+                                cantidad = float(input("Cuantas piezas desea comprar: "))
+                                precio = float(input("Ingrese el precio del articulo que desea comprar: "))
+                                break
+                            except ValueError:
+                                print("Lo sentimos, solo se aceptan numeros")
+                            continue   
+                        registros_detalle["Producto"] = producto
+                        registros_detalle["Cantidad"] = cantidad
+                        registros_detalle["Precio"] = precio * cantidad
+                        c.execute("INSERT INTO Detalles_Ventas (Folio,Fecha,Producto,Cantidad,Precio) VALUES(:Folio,:Fecha, :Producto, :Cantidad, :Precio)", registros_detalle)
+                        conexion.commit()  
+                        respuesta = int(input("\n ¿Deseas capturar otro registro? \n(1-Si / 0-No): "))
+                        if respuesta == 0:
+                            c.execute("SELECT SUM(PRECIO) FROM Detalles_Ventas WHERE FOLIO = :Folio", registros_detalle)
+                            precio = c.fetchall()[0][0]
+                            precio = float(round(precio, 2))
+                            print(f"El total a pagar del Cliente {nombre} con el Folio #{folio} es de ${precio}")
+            
+                elif decision_usuario == 2:
+                    print("IMPORTANTE: USAR FECHA EN QUE INICIASTE TU PRIMER REGISTRO Y HASTA LA FECHA ACTUAL EN LA QUE TE ENCUENTRES")
+                    fecha_consultar = input("Dime una fecha (dd/mm/aaaa): ")
+                    fecha_consultar = datetime.datetime.strptime(fecha_consultar, "%d/%m/%Y").date()
+                    fecha_criterio = {"Fecha":fecha_consultar}
+                    c.execute("SELECT Fecha,Folio,Producto,Cantidad,Precio FROM Detalles_Ventas WHERE DATE(Fecha) = :Fecha;",fecha_criterio)
+                    fechas = c.fetchall()
+                    c.execute("SELECT SUM(PRECIO) FROM Detalles_Ventas WHERE DATE (Fecha) = :Fecha;",fecha_criterio)
+                    precio_fecha = c.fetchall()[0][0]
+                    precio_fecha = str(round(precio_fecha, 2))
+                    if fechas:
+                        df=pd.DataFrame(fechas)
+                        df.columns = ['Fecha','Folio','Producto','Cantidad','Precio']
+                        df.set_index('Fecha',inplace=True)
+                        print(df)
+                        print("")
+                        print("")
+                        print(f"Las ventas registradas en la Fecha {fecha_consultar} es de ${precio_fecha}")
+                    else:
+                        print("No jala")
+                    
+                if decision_usuario == 3:
+                    print("Que tenga un excelente dia, le agradecemos su visita.")
+                    break
+
+                
+
+
+    except sqlite3.Error as x:
+        print (x)
+    except Exception:
+        print(f"Se produjo el siguiente error: {sys.exc_info()[0]}")
+    finally:
+        if (conexion):
+            conexion.close()
+            reinicio = int(input("Deseas regresar al menu: 1-si/ 2-No: "))
+            if reinicio == 1:
+                programa
+            else:
+                break
